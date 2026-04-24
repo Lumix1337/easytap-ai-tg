@@ -6,13 +6,11 @@ from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
 
-from bot.assistant_service import AssistantService
 from bot.api_client import EasyTapApiClient
 from bot.keyboards import main_keyboard
 
 
 def build_router(
-  assistant: AssistantService,
   sync_api: EasyTapApiClient | None = None,
   web_app_url: str = "",
 ) -> Router:
@@ -64,7 +62,7 @@ def build_router(
 
     text = (
       "Привет! Я EasyTap AI-бот.\n"
-      "Пиши карьерный вопрос, а я отвечу и подберу вакансии с hh.ru."
+      "Пиши карьерный вопрос, а я отвечу и подберу вакансии из базы EasyTap."
       f"{link_hint}"
     )
     await message.answer(text, reply_markup=main_keyboard())
@@ -91,19 +89,21 @@ def build_router(
   @router.callback_query(F.data == "show_jobs")
   async def show_jobs(callback: CallbackQuery) -> None:
     user = callback.from_user
+    if not sync_api:
+      await callback.message.answer("Backend API не настроен. Укажи easytap_api_url в настройках бота.")
+      await callback.answer()
+      return
+
     jobs: list = []
-    if sync_api:
-      payload = await sync_api.assistant_chat(
-        tg_user_id=user.id,
-        message="Покажи актуальные стажировки и junior вакансии",
-      )
-      if payload:
-        jobs = list(payload.get("jobs", []))[:3]
+    payload = await sync_api.assistant_chat(
+      tg_user_id=user.id,
+      message="Покажи актуальные стажировки и junior вакансии",
+    )
+    if payload:
+      jobs = list(payload.get("jobs", []))[:3]
+
     if not jobs:
-      result = await assistant.handle_user_message("Покажи актуальные стажировки и junior вакансии")
-      jobs = result.jobs[:3]
-    if not jobs:
-      await callback.message.answer("Пока нет свежих вакансий с hh.ru. Попробуй другой запрос.")
+      await callback.message.answer("Пока нет свежих вакансий в базе. Попробуй другой запрос.")
       await callback.answer()
       return
 
@@ -119,24 +119,21 @@ def build_router(
     if user is None:
       return
 
-    if sync_api:
-      payload = await sync_api.assistant_chat(tg_user_id=user.id, message=message.text)
-      if payload:
-        reply = str(payload.get("reply") or "Готовлю ответ...")
-        jobs = list(payload.get("jobs", []))
-        await message.answer(reply, reply_markup=main_keyboard())
-        if jobs:
-          await message.answer(format_jobs_message("Подобрал вакансии по твоему запросу", jobs[:3]))
-        else:
-          await message.answer("По этому запросу ничего не нашлось. Уточни роль или город.")
-        return
+    if not sync_api:
+      await message.answer("Backend API не настроен. Укажи easytap_api_url в настройках бота.")
+      return
 
-    result = await assistant.handle_user_message(message.text)
-    await message.answer(result.answer, reply_markup=main_keyboard())
+    payload = await sync_api.assistant_chat(tg_user_id=user.id, message=message.text)
+    if not payload:
+      await message.answer("Не удалось получить ответ из backend. Проверь API и попробуй снова.")
+      return
 
-    if result.jobs:
-      await message.answer(format_jobs_message("Подобрал вакансии по твоему запросу", result.jobs[:3]))
+    reply = str(payload.get("reply") or "Готовлю ответ...")
+    jobs = list(payload.get("jobs", []))
+    await message.answer(reply, reply_markup=main_keyboard())
+    if jobs:
+      await message.answer(format_jobs_message("Подобрал вакансии по твоему запросу", jobs[:3]))
     else:
-      await message.answer("По этому запросу ничего не нашлось ни на hh.ru, ни на других источниках. Уточни роль или город.")
+      await message.answer("По этому запросу ничего не нашлось в базе. Уточни роль или город.")
 
   return router
