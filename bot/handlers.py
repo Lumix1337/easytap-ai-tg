@@ -4,6 +4,7 @@ from html import escape
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.types import CallbackQuery, Message
 
 from bot.api_client import EasyTapApiClient
@@ -40,6 +41,20 @@ def build_router(
       )
     return "\n\n".join(lines)
 
+  def build_job_keyboard(jobs: list) -> InlineKeyboardMarkup | None:
+    if not web_app_url:
+      return None
+    buttons: list[list[InlineKeyboardButton]] = []
+    for idx, job in enumerate(jobs[:3], start=1):
+      vacancy_id = get_job_field(job, "id")
+      if not vacancy_id:
+        continue
+      url = f"{web_app_url.rstrip('/')}/jobs/{escape(vacancy_id)}"
+      buttons.append([InlineKeyboardButton(text=f"Открыть #{idx} на сайте", url=url)])
+    if not buttons:
+      return None
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
   @router.message(CommandStart())
   async def cmd_start(message: Message) -> None:
     user = message.from_user
@@ -48,12 +63,15 @@ def build_router(
 
     link_hint = ""
     if sync_api:
-      code = await sync_api.register_telegram_user(
+      link_info = await sync_api.register_telegram_user(
         tg_user_id=user.id,
         username=user.username,
         full_name=user.full_name,
       )
-      if code:
+      if link_info and link_info.get("linked"):
+        link_hint = "\n\nАккаунт уже синхронизирован с сайтом."
+      elif link_info and link_info.get("link_code"):
+        code = str(link_info.get("link_code"))
         web_line = f"\nОткрой сайт: {web_app_url}" if web_app_url else ""
         link_hint = (
           f"\n\nКод синхронизации: <b>{code}</b>"
@@ -75,13 +93,20 @@ def build_router(
     if not sync_api:
       await message.answer("Синхронизация с сайтом отключена в настройках бота.")
       return
-    code = await sync_api.register_telegram_user(
+    link_info = await sync_api.register_telegram_user(
       tg_user_id=user.id,
       username=user.username,
       full_name=user.full_name,
     )
-    if not code:
+    if not link_info:
       await message.answer("Не удалось получить код. Попробуй позже.")
+      return
+    if link_info.get("linked"):
+      await message.answer("Этот Telegram уже синхронизирован с аккаунтом на сайте.")
+      return
+    code = str(link_info.get("link_code") or "")
+    if not code:
+      await message.answer("Код не получен. Попробуй позже.")
       return
     web_line = f"\nСайт: {web_app_url}" if web_app_url else ""
     await message.answer(f"Твой код синхронизации: <b>{code}</b>{web_line}")
@@ -107,7 +132,7 @@ def build_router(
       await callback.answer()
       return
 
-    await callback.message.answer(format_jobs_message("Твои топ вакансии", jobs))
+    await callback.message.answer(format_jobs_message("Твои топ вакансии", jobs), reply_markup=build_job_keyboard(jobs))
     await callback.answer()
 
   @router.message()
@@ -132,7 +157,11 @@ def build_router(
     jobs = list(payload.get("jobs", []))
     await message.answer(reply, reply_markup=main_keyboard())
     if jobs:
-      await message.answer(format_jobs_message("Подобрал вакансии по твоему запросу", jobs[:3]))
+      top_jobs = jobs[:3]
+      await message.answer(
+        format_jobs_message("Подобрал вакансии по твоему запросу", top_jobs),
+        reply_markup=build_job_keyboard(top_jobs),
+      )
     else:
       await message.answer("По этому запросу ничего не нашлось в базе. Уточни роль или город.")
 

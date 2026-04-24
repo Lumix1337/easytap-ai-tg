@@ -10,7 +10,7 @@ class EasyTapApiClient:
   async def close(self) -> None:
     await self._client.aclose()
 
-  async def register_telegram_user(self, tg_user_id: int, username: str | None, full_name: str) -> str | None:
+  async def register_telegram_user(self, tg_user_id: int, username: str | None, full_name: str) -> dict | None:
     """
     Optional link flow with backend.
     Backend may return a short code/token for linking web <-> tg identities.
@@ -25,7 +25,7 @@ class EasyTapApiClient:
       if not res.is_success:
         return None
       data = res.json()
-      return data.get("link_code")
+      return data if isinstance(data, dict) else None
     except httpx.HTTPError:
       return None
 
