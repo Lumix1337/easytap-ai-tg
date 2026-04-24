@@ -53,6 +53,25 @@ def build_router(
       )
     return "\n\n".join(lines)
 
+  def format_account_jobs_message(title: str, items: list, *, include_status: bool = False) -> str:
+    lines = [f"<b>{escape(title)}</b>"]
+    for idx, item in enumerate(items, start=1):
+      role = escape(str(item.get("role") or "Без названия"))
+      company = escape(str(item.get("company") or "Компания"))
+      area = escape(str(item.get("location") or "Не указано"))
+      salary = escape(str(item.get("salary") or ""))
+      salary_block = f" · {salary}" if salary else ""
+      url = escape(str(item.get("url") or ""))
+      lines.append(f"{idx}. <b>{role}</b> — {company} ({area}){salary_block}")
+      if include_status:
+        status = escape(str(item.get("status") or "planned"))
+        note = escape(str(item.get("note") or ""))
+        note_block = f"\nКомментарий: {note}" if note else ""
+        lines.append(f"Статус отклика: <b>{status}</b>{note_block}")
+      if url:
+        lines.append(f"<a href=\"{url}\">Открыть вакансию</a>")
+    return "\n\n".join(lines)
+
   def build_job_keyboard(jobs: list) -> InlineKeyboardMarkup | None:
     if not web_app_url or not is_telegram_safe_url(web_app_url):
       return None
@@ -172,6 +191,42 @@ def build_router(
       ),
     )
 
+  @router.message(Command("favorites"))
+  async def cmd_favorites(message: Message) -> None:
+    if not sync_api:
+      await message.answer("Сервис временно недоступен. Попробуй позже.")
+      return
+    payload = await sync_api.get_account_favorites(message.from_user.id)
+    if not payload:
+      await message.answer("Не удалось загрузить избранное. Попробуй ещё раз.")
+      return
+    if not payload.get("linked"):
+      await message.answer("Сначала свяжи Telegram с аккаунтом сайта через /link.")
+      return
+    items = list(payload.get("items", []))
+    if not items:
+      await message.answer("В избранном пока пусто. Добавь вакансии на сайте и возвращайся.")
+      return
+    await message.answer(format_account_jobs_message("Твоё избранное", items))
+
+  @router.message(Command("applications"))
+  async def cmd_applications(message: Message) -> None:
+    if not sync_api:
+      await message.answer("Сервис временно недоступен. Попробуй позже.")
+      return
+    payload = await sync_api.get_account_applications(message.from_user.id)
+    if not payload:
+      await message.answer("Не удалось загрузить отклики. Попробуй ещё раз.")
+      return
+    if not payload.get("linked"):
+      await message.answer("Сначала свяжи Telegram с аккаунтом сайта через /link.")
+      return
+    items = list(payload.get("items", []))
+    if not items:
+      await message.answer("Откликов пока нет. Когда откликнешься на сайте, они появятся здесь.")
+      return
+    await message.answer(format_account_jobs_message("Твои отклики", items, include_status=True))
+
   @router.callback_query(F.data == "show_link_help")
   async def show_link_help(callback: CallbackQuery) -> None:
     if not callback.message:
@@ -213,6 +268,64 @@ def build_router(
       return
 
     await callback.message.answer(format_jobs_message("Твои топ вакансии", jobs), reply_markup=build_job_keyboard(jobs))
+    await callback.answer()
+
+  @router.callback_query(F.data == "show_favorites")
+  async def show_favorites(callback: CallbackQuery) -> None:
+    if not callback.message:
+      await callback.answer()
+      return
+    if not sync_api:
+      await callback.message.answer("Сервис временно недоступен. Попробуй позже.")
+      await callback.answer()
+      return
+
+    payload = await sync_api.get_account_favorites(callback.from_user.id)
+    if not payload:
+      await callback.message.answer("Не удалось загрузить избранные вакансии. Попробуй ещё раз.")
+      await callback.answer()
+      return
+    if not payload.get("linked"):
+      await callback.message.answer("Сначала свяжи Telegram с аккаунтом сайта через /link.")
+      await callback.answer()
+      return
+
+    items = list(payload.get("items", []))
+    if not items:
+      await callback.message.answer("В избранном пока пусто. Добавь вакансии на сайте и возвращайся.")
+      await callback.answer()
+      return
+
+    await callback.message.answer(format_account_jobs_message("Твоё избранное", items))
+    await callback.answer()
+
+  @router.callback_query(F.data == "show_applications")
+  async def show_applications(callback: CallbackQuery) -> None:
+    if not callback.message:
+      await callback.answer()
+      return
+    if not sync_api:
+      await callback.message.answer("Сервис временно недоступен. Попробуй позже.")
+      await callback.answer()
+      return
+
+    payload = await sync_api.get_account_applications(callback.from_user.id)
+    if not payload:
+      await callback.message.answer("Не удалось загрузить отклики. Попробуй ещё раз.")
+      await callback.answer()
+      return
+    if not payload.get("linked"):
+      await callback.message.answer("Сначала свяжи Telegram с аккаунтом сайта через /link.")
+      await callback.answer()
+      return
+
+    items = list(payload.get("items", []))
+    if not items:
+      await callback.message.answer("Откликов пока нет. Когда откликнешься на сайте, они появятся здесь.")
+      await callback.answer()
+      return
+
+    await callback.message.answer(format_account_jobs_message("Твои отклики", items, include_status=True))
     await callback.answer()
 
   @router.message()

@@ -17,6 +17,8 @@ def _is_telegram_safe_url(url: str) -> bool:
 def main_keyboard(web_app_url: str = "") -> InlineKeyboardMarkup:
   buttons: list[list[InlineKeyboardButton]] = [
     [InlineKeyboardButton(text="Показать топ вакансий", callback_data="show_jobs")],
+    [InlineKeyboardButton(text="Моё избранное", callback_data="show_favorites")],
+    [InlineKeyboardButton(text="Мои отклики", callback_data="show_applications")],
     [InlineKeyboardButton(text="Связать Telegram с аккаунтом", callback_data="show_link_help")],
   ]
 

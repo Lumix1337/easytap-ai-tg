@@ -44,3 +44,23 @@ class EasyTapApiClient:
     except httpx.HTTPError:
       return None
 
+  async def get_account_favorites(self, tg_user_id: int) -> dict | None:
+    try:
+      res = await self._client.get("/tg/account/favorites/", params={"tg_user_id": str(tg_user_id)})
+      if not res.is_success:
+        return None
+      data = res.json()
+      return data if isinstance(data, dict) else None
+    except httpx.HTTPError:
+      return None
+
+  async def get_account_applications(self, tg_user_id: int) -> dict | None:
+    try:
+      res = await self._client.get("/tg/account/applications/", params={"tg_user_id": str(tg_user_id)})
+      if not res.is_success:
+        return None
+      data = res.json()
+      return data if isinstance(data, dict) else None
+    except httpx.HTTPError:
+      return None
+
