@@ -79,11 +79,12 @@ def build_router(
         )
 
     text = (
-      "Привет! Я EasyTap AI-бот.\n"
-      "Пиши карьерный вопрос, а я отвечу и подберу вакансии из базы EasyTap."
-      f"{link_hint}"
+      "Привет! Я EasyTap AI-бот и рад помочь тебе с карьерой.\n"
+      "Напиши вопрос о стажировке, резюме или собеседовании, а я подскажу шаги и подберу вакансии."
+      f"{link_hint}\n\n"
+      "Если у тебя уже есть аккаунт EasyTap на сайте, нажми кнопку «Связать Telegram с аккаунтом»."
     )
-    await message.answer(text, reply_markup=main_keyboard())
+    await message.answer(text, reply_markup=main_keyboard(web_app_url))
 
   @router.message(Command("link"))
   async def cmd_link(message: Message) -> None:
@@ -91,7 +92,7 @@ def build_router(
     if user is None:
       return
     if not sync_api:
-      await message.answer("Синхронизация с сайтом отключена в настройках бота.")
+      await message.answer("Синхронизация с сайтом сейчас недоступна. Попробуй чуть позже.")
       return
     link_info = await sync_api.register_telegram_user(
       tg_user_id=user.id,
@@ -99,23 +100,78 @@ def build_router(
       full_name=user.full_name,
     )
     if not link_info:
-      await message.answer("Не удалось получить код. Попробуй позже.")
+      await message.answer("Не смог получить код привязки. Давай попробуем ещё раз чуть позже.")
       return
     if link_info.get("linked"):
-      await message.answer("Этот Telegram уже синхронизирован с аккаунтом на сайте.")
+      await message.answer("Готово! Этот Telegram уже связан с твоим аккаунтом на сайте.")
       return
     code = str(link_info.get("link_code") or "")
     if not code:
-      await message.answer("Код не получен. Попробуй позже.")
+      await message.answer("Код пока не получен. Попробуй ещё раз через минуту.")
       return
     web_line = f"\nСайт: {web_app_url}" if web_app_url else ""
-    await message.answer(f"Твой код синхронизации: <b>{code}</b>{web_line}")
+    await message.answer(
+      "Чтобы войти в свой аккаунт EasyTap через Telegram:\n"
+      f"1) Открой сайт и войди в существующий аккаунт.{web_line}\n"
+      "2) В AI-чате на сайте отправь этот код.\n"
+      f"3) Код: <b>{code}</b>\n\n"
+      "После этого бот будет узнавать твой профиль автоматически."
+    )
+
+  @router.message(Command("login"))
+  async def cmd_login(message: Message) -> None:
+    if not web_app_url:
+      await message.answer("Ссылка на сайт пока не настроена. Обратись к администратору сервиса.")
+      return
+    site = web_app_url.rstrip("/")
+    await message.answer(
+      "Открой вход на сайте по кнопке ниже и авторизуйся в своём аккаунте.",
+      reply_markup=InlineKeyboardMarkup(
+        inline_keyboard=[
+          [InlineKeyboardButton(text="Войти на сайте", url=f"{site}/auth?mode=login&redirect=%2Fassistant")]
+        ]
+      ),
+    )
+
+  @router.message(Command("signup"))
+  async def cmd_signup(message: Message) -> None:
+    if not web_app_url:
+      await message.answer("Ссылка на сайт пока не настроена. Обратись к администратору сервиса.")
+      return
+    site = web_app_url.rstrip("/")
+    await message.answer(
+      "Создай аккаунт на сайте по кнопке ниже, после чего вернись сюда и используй /link.",
+      reply_markup=InlineKeyboardMarkup(
+        inline_keyboard=[
+          [InlineKeyboardButton(text="Регистрация на сайте", url=f"{site}/auth?mode=signup&redirect=%2Fassistant")]
+        ]
+      ),
+    )
+
+  @router.callback_query(F.data == "show_link_help")
+  async def show_link_help(callback: CallbackQuery) -> None:
+    if not callback.message:
+      await callback.answer()
+      return
+
+    site_line = f"\nСайт: {web_app_url}" if web_app_url else ""
+    text = (
+      "Давай быстро свяжем Telegram с аккаунтом EasyTap.\n"
+      "Если аккаунт на сайте уже есть — это займёт меньше минуты:\n"
+      "1) Нажми /link и получи код.\n"
+      "2) Войди на сайт в свой аккаунт.\n"
+      "3) Вставь код в AI-чате на сайте.\n\n"
+      "После привязки ты сможешь писать боту в Telegram, и он продолжит работу с твоим профилем."
+      f"{site_line}"
+    )
+    await callback.message.answer(text)
+    await callback.answer()
 
   @router.callback_query(F.data == "show_jobs")
   async def show_jobs(callback: CallbackQuery) -> None:
     user = callback.from_user
     if not sync_api:
-      await callback.message.answer("Backend API не настроен. Укажи easytap_api_url в настройках бота.")
+      await callback.message.answer("Сервис вакансий временно недоступен. Попробуй немного позже.")
       await callback.answer()
       return
 
@@ -128,7 +184,7 @@ def build_router(
       jobs = list(payload.get("jobs", []))[:3]
 
     if not jobs:
-      await callback.message.answer("Пока нет свежих вакансий в базе. Попробуй другой запрос.")
+      await callback.message.answer("Сейчас не нашёл свежих вакансий по этому запросу. Давай попробуем другой вариант.")
       await callback.answer()
       return
 
@@ -138,24 +194,24 @@ def build_router(
   @router.message()
   async def handle_message(message: Message) -> None:
     if not message.text:
-      await message.answer("Пока поддерживаю только текстовые сообщения.")
+      await message.answer("Пока я умею работать с текстом. Напиши сообщение словами, и я сразу помогу.")
       return
     user = message.from_user
     if user is None:
       return
 
     if not sync_api:
-      await message.answer("Backend API не настроен. Укажи easytap_api_url в настройках бота.")
+      await message.answer("Сервис сейчас недоступен. Я уже жду, когда всё заработает, попробуй ещё раз чуть позже.")
       return
 
     payload = await sync_api.assistant_chat(tg_user_id=user.id, message=message.text)
     if not payload:
-      await message.answer("Не удалось получить ответ из backend. Проверь API и попробуй снова.")
+      await message.answer("Не получилось получить ответ сервиса. Попробуй снова через пару секунд.")
       return
 
     reply = str(payload.get("reply") or "Готовлю ответ...")
     jobs = list(payload.get("jobs", []))
-    await message.answer(reply, reply_markup=main_keyboard())
+    await message.answer(reply, reply_markup=main_keyboard(web_app_url))
     if jobs:
       top_jobs = jobs[:3]
       await message.answer(
@@ -163,6 +219,6 @@ def build_router(
         reply_markup=build_job_keyboard(top_jobs),
       )
     else:
-      await message.answer("По этому запросу ничего не нашлось в базе. Уточни роль или город.")
+      await message.answer("По этому запросу пока нет результатов. Уточни роль, стек или город — и я подберу лучше.")
 
   return router

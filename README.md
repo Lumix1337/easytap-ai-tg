@@ -1,27 +1,29 @@
 # EasyTap Telegram Bot (Python)
 
-Telegram-бот для EasyTap.ai: автономное общение с AI (Groq) и подбор вакансий с hh.ru + remotive.com.
+Telegram-бот EasyTap.ai с синхронизацией аккаунта между сайтом и Telegram.
 
-## Что уже есть
+## Что реализовано
 
-- Команды `/start` и `/link`
-- Ответы AI через Groq API
-- Подбор релевантных вакансий через HH API (`https://api.hh.ru/vacancies`)
-- Дополнительный источник вакансий: Remotive API (`https://remotive.com/api/remote-jobs`)
-- Умный парсер запроса (роль, город, удаленка, уровень)
-- Multi-search pipeline (синонимы + ослабление фильтров)
-- Fallback-режим при 0 результатов (более широкий поиск)
-- Кликабельные ссылки "Открыть вакансию" в Telegram
-- Кнопка показа топ вакансий
-- Полностью независим от сайта и backend EasyTap
+- Команды `/start`, `/link`, `/login`, `/signup`
+- Кнопки в Telegram: вход, регистрация, привязка Telegram к сайту, топ вакансий
+- Вход через сайт с возвратом в единый AI-аккаунт
+- Если пользователь уже зарегистрирован на сайте, он связывает Telegram кодом и продолжает работу в том же аккаунте
+- Ответы AI и подбор вакансий через backend EasyTap (`/api/assistant/channel-chat/`)
+- Дружелюбные тексты и сценарии помощи в боте
+
+## Как работает синхронизация
+
+1. Пользователь в Telegram отправляет `/link`.
+2. Бот получает одноразовый код через backend (`/api/tg/link/start/`).
+3. Пользователь входит на сайт и вставляет код в разделе "Синхронизация с Telegram".
+4. Backend подтверждает код (`/api/tg/link/confirm/`) и связывает Telegram с web-аккаунтом.
+5. После привязки сообщения из Telegram идут в тот же профиль пользователя.
 
 ## Структура
 
 - `main.py` - точка входа (polling)
 - `bot/config.py` - конфиг из `.env`
-- `bot/groq_client.py` - клиент Groq LLM
-- `bot/hh_client.py` - клиент HH API
-- `bot/assistant_service.py` - оркестрация AI + поиск вакансий
+- `bot/api_client.py` - клиент API backend EasyTap
 - `bot/handlers.py` - хендлеры команд и сообщений
 - `bot/keyboards.py` - inline-кнопки
 
@@ -39,14 +41,19 @@ Telegram-бот для EasyTap.ai: автономное общение с AI (Gr
 ## Переменные окружения
 
 - `TG_BOT_TOKEN` - токен Telegram-бота
-- `GROQ_API_KEY` - ключ Groq API
-- `GROQ_MODEL` - модель Groq (по умолчанию `llama-3.3-70b-versatile`)
-- `HH_API_URL` - базовый URL HH API
-- `REMOTIVE_API_URL` - базовый URL Remotive API
-- `HH_RESULTS_LIMIT` - количество вакансий в подборе
-- `REQUEST_TIMEOUT` - таймаут внешних запросов в секундах
+- `EASYTAP_API_URL` - URL backend API, например `http://localhost:8000/api`
+- `EASYTAP_WEB_APP_URL` - URL сайта, например `http://localhost:5173`
+- `REQUEST_TIMEOUT` - таймаут HTTP-запросов
+- `GROQ_API_KEY`, `GROQ_MODEL`, `HH_API_URL`, `REMOTIVE_API_URL`, `HH_RESULTS_LIMIT` - резервные настройки
+
+## Команды бота
+
+- `/start` - приветствие и быстрые кнопки
+- `/link` - получить код привязки Telegram к сайту
+- `/login` - открыть страницу входа на сайт
+- `/signup` - открыть страницу регистрации на сайт
 
 ## Примечания
 
-- Сейчас используется polling (без webhook), чтобы быстрее стартовать локально.
-- Для продакшена лучше перейти на webhook + reverse proxy.
+- Используется polling (без webhook) для локальной разработки.
+- Для продакшена рекомендуется webhook + reverse proxy.
