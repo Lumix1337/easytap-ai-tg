@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import escape
+from urllib.parse import urlparse
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
@@ -16,6 +17,17 @@ def build_router(
   web_app_url: str = "",
 ) -> Router:
   router = Router(name="main")
+
+  def is_telegram_safe_url(url: str) -> bool:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+      return False
+    host = (parsed.hostname or "").lower()
+    if not host:
+      return False
+    if host in {"localhost", "127.0.0.1", "::1"}:
+      return False
+    return True
 
   def get_job_field(job, field: str, default: str = "") -> str:
     if isinstance(job, dict):
@@ -42,7 +54,7 @@ def build_router(
     return "\n\n".join(lines)
 
   def build_job_keyboard(jobs: list) -> InlineKeyboardMarkup | None:
-    if not web_app_url:
+    if not web_app_url or not is_telegram_safe_url(web_app_url):
       return None
     buttons: list[list[InlineKeyboardButton]] = []
     for idx, job in enumerate(jobs[:3], start=1):
@@ -124,6 +136,12 @@ def build_router(
       await message.answer("Ссылка на сайт пока не настроена. Обратись к администратору сервиса.")
       return
     site = web_app_url.rstrip("/")
+    if not is_telegram_safe_url(site):
+      await message.answer(
+        "Сейчас кнопка входа недоступна: Telegram не принимает локальные адреса вроде localhost.\n"
+        f"Открой сайт вручную: {site}/auth?mode=login&redirect=%2Fassistant"
+      )
+      return
     await message.answer(
       "Открой вход на сайте по кнопке ниже и авторизуйся в своём аккаунте.",
       reply_markup=InlineKeyboardMarkup(
@@ -139,6 +157,12 @@ def build_router(
       await message.answer("Ссылка на сайт пока не настроена. Обратись к администратору сервиса.")
       return
     site = web_app_url.rstrip("/")
+    if not is_telegram_safe_url(site):
+      await message.answer(
+        "Сейчас кнопка регистрации недоступна: Telegram не принимает локальные адреса вроде localhost.\n"
+        f"Открой сайт вручную: {site}/auth?mode=signup&redirect=%2Fassistant"
+      )
+      return
     await message.answer(
       "Создай аккаунт на сайте по кнопке ниже, после чего вернись сюда и используй /link.",
       reply_markup=InlineKeyboardMarkup(
