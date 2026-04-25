@@ -54,6 +54,16 @@ def build_router(
     return "\n\n".join(lines)
 
   def format_account_jobs_message(title: str, items: list, *, include_status: bool = False) -> str:
+    def build_account_vacancy_url(item: dict) -> str:
+      vacancy_id = str(item.get("vacancy_id") or "").strip()
+      if vacancy_id and web_app_url and is_telegram_safe_url(web_app_url):
+        return f"{web_app_url.rstrip('/')}/jobs/{vacancy_id}"
+
+      raw_url = str(item.get("url") or "").strip()
+      if raw_url and is_telegram_safe_url(raw_url):
+        return raw_url
+      return ""
+
     lines = [f"<b>{escape(title)}</b>"]
     for idx, item in enumerate(items, start=1):
       role = escape(str(item.get("role") or "Без названия"))
@@ -61,7 +71,7 @@ def build_router(
       area = escape(str(item.get("location") or "Не указано"))
       salary = escape(str(item.get("salary") or ""))
       salary_block = f" · {salary}" if salary else ""
-      url = escape(str(item.get("url") or ""))
+      url = escape(build_account_vacancy_url(item))
       lines.append(f"{idx}. <b>{role}</b> — {company} ({area}){salary_block}")
       if include_status:
         status = escape(str(item.get("status") or "planned"))
