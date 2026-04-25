@@ -54,15 +54,27 @@ def build_router(
     return "\n\n".join(lines)
 
   def format_account_jobs_message(title: str, items: list, *, include_status: bool = False) -> str:
-    def build_account_vacancy_url(item: dict) -> str:
+    def build_account_vacancy_links(item: dict) -> tuple[str, str]:
+      # Prefer canonical web platform link from backend sync endpoint.
+      web_url = str(item.get("web_url") or "").strip()
+      if web_url and is_telegram_safe_url(web_url):
+        return web_url, web_url
+
       vacancy_id = str(item.get("vacancy_id") or "").strip()
       if vacancy_id and web_app_url and is_telegram_safe_url(web_app_url):
-        return f"{web_app_url.rstrip('/')}/jobs/{vacancy_id}"
+        url = f"{web_app_url.rstrip('/')}/jobs/{vacancy_id}"
+        return url, url
 
       raw_url = str(item.get("url") or "").strip()
       if raw_url and is_telegram_safe_url(raw_url):
-        return raw_url
-      return ""
+        return raw_url, raw_url
+
+      if web_url:
+        return "", web_url
+      if vacancy_id and web_app_url:
+        fallback = f"{web_app_url.rstrip('/')}/jobs/{vacancy_id}"
+        return "", fallback
+      return "", raw_url
 
     lines = [f"<b>{escape(title)}</b>"]
     for idx, item in enumerate(items, start=1):
@@ -71,7 +83,8 @@ def build_router(
       area = escape(str(item.get("location") or "Не указано"))
       salary = escape(str(item.get("salary") or ""))
       salary_block = f" · {salary}" if salary else ""
-      url = escape(build_account_vacancy_url(item))
+      clickable_url, plain_url = build_account_vacancy_links(item)
+      url = escape(clickable_url)
       lines.append(f"{idx}. <b>{role}</b> — {company} ({area}){salary_block}")
       if include_status:
         status = escape(str(item.get("status") or "planned"))
@@ -80,6 +93,8 @@ def build_router(
         lines.append(f"Статус отклика: <b>{status}</b>{note_block}")
       if url:
         lines.append(f"<a href=\"{url}\">Открыть вакансию</a>")
+      elif plain_url:
+        lines.append(f"Ссылка: {escape(plain_url)}")
     return "\n\n".join(lines)
 
   def build_job_keyboard(jobs: list) -> InlineKeyboardMarkup | None:
